@@ -40,10 +40,11 @@ stock-price-prediction/<br>
 
 ---
 
-## 🧑‍💻 Author
+## 🔗 Connect with Me
 
-- Aditya Raj  
-- [GitHub](https://github.com/ADiTyaRaj8969) | [LinkedIn](https://www.linkedin.com/in/aditya-raj-710a5a291/)
+- 🔗 GitHub: [@ADiTyaRaj8969](https://github.com/ADiTyaRaj8969)  
+- ✉️ Email: adivid198986@gmail.com  
+- 💼 LinkedIn: [Aditya Raj](https://www.linkedin.com/in/aditya-raj-710a5a291/)
 
 ---
 
