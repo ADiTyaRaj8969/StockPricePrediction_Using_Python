@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.env
+venv/
+env/
+.venv/
+.Python
+*.log
+
+# Node / React
+website/node_modules/
+website/dist/
+website/.env.local
+website/.env.production
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.user
+
+# Data / output
+*.png
+*.jpg
+*.pdf
+!website/src/assets/*.png
