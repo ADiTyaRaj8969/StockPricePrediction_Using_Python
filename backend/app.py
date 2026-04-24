@@ -130,6 +130,19 @@ def future_dates(last_dt, n):
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+@app.route('/')
+def index():
+    return jsonify({
+        'status': 'online',
+        'message': 'QuantEdge Stock Prediction API is running.',
+        'endpoints': {
+            'health': '/api/health',
+            'predict': '/api/predict (POST)',
+            'report': '/api/report (POST)'
+        }
+    })
+
+
 @app.route('/api/health')
 def health():
     return jsonify({'status': 'ok', 'message': 'StockPredict API running'})
