@@ -15,12 +15,49 @@ import { runPrediction, calcRSI } from '../utils/mlPredict'
 import { generateReport }         from '../utils/reportFrontend'
 import { COMPANIES }              from '../data/companies'
 
-const TODAY  = new Date().toISOString().split('T')[0]
-const ONE_YR = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0]
+const TODAY    = new Date().toISOString().split('T')[0]
+const ONE_YR   = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0]
+const API_URL  = import.meta.env.VITE_API_URL  // set to Flask backend URL on Render
 
-const fmt    = s => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
-const fmtP   = (v, c = '$') => v != null ? `${c}${Number(v).toFixed(2)}` : '—'
+const fmt     = s => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
+const fmtP    = (v, c = '$') => v != null ? `${c}${Number(v).toFixed(2)}` : '—'
 const getCurr = sym => (sym.endsWith('.NS') || sym.endsWith('.BO')) ? '₹' : '$'
+
+async function backendPredict(sym, startDate, endDate, predDays, futureDays) {
+  const resp = await fetch(`${API_URL}/api/predict`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      symbol:           sym,
+      start:            startDate,
+      end:              endDate,
+      prediction_days:  predDays,
+      future_days:      futureDays,
+    }),
+  })
+  const json = await resp.json()
+  if (!resp.ok) throw new Error(json.error || `Backend error ${resp.status}`)
+  const m = json.metrics
+  return {
+    symbol:         sym,
+    currencySymbol: json.currencySymbol ?? getCurr(sym),
+    historical:     json.historical,
+    future:         json.future,
+    testActualArr:  json.test_actual,
+    testPredArr:    json.test_predicted,
+    metrics: {
+      rmse:          m.rmse,
+      accuracy:      m.accuracy,
+      currentPrice:  m.current_price,
+      predictedNext: m.predicted_next,
+      pctChange:     m.pct_change,
+      priceChange:   m.price_change,
+      dataPoints:    m.data_points,
+      trainSize:     m.train_size,
+      testSize:      m.test_size,
+    },
+  }
+}
 
 // Quick-access chips — ticker + short label
 const QUICK = [
@@ -129,32 +166,37 @@ export default function StockPredictor() {
     if (!sym) return
     setLoading(true); setError(null); setResult(null)
     try {
-      const { rows, currencySymbol } = await fetchHistory(sym, startDate, endDate)
-      const closes = rows.map(r => r.close)
-      const pred   = runPrediction(closes, predDays, futureDays)
+      let res
+      if (API_URL) {
+        // ── Flask backend (Random Forest via Python) ──
+        res = await backendPredict(sym, startDate, endDate, predDays, futureDays)
+      } else {
+        // ── Browser-side ensemble ML (no backend required) ──
+        const { rows, currencySymbol } = await fetchHistory(sym, startDate, endDate)
+        const closes = rows.map(r => r.close)
+        const pred   = runPrediction(closes, predDays, futureDays)
 
-      const lastDate = new Date(rows[rows.length - 1].date)
-      const futDates = []
-      for (let i = 1; futDates.length < futureDays; i++) {
-        const d = new Date(lastDate)
-        d.setDate(d.getDate() + i)
-        if (d.getDay() !== 0 && d.getDay() !== 6)
-          futDates.push(d.toISOString().split('T')[0])
+        const lastDate = new Date(rows[rows.length - 1].date)
+        const futDates = []
+        for (let i = 1; futDates.length < futureDays; i++) {
+          const d = new Date(lastDate)
+          d.setDate(d.getDate() + i)
+          if (d.getDay() !== 0 && d.getDay() !== 6)
+            futDates.push(d.toISOString().split('T')[0])
+        }
+
+        const historical    = rows.map((r, i) => ({ ...r, sma20: pred.sma20[i], sma100: pred.sma100[i] }))
+        const future        = futDates.map((date, i) => ({ date, predicted: pred.predictions[i] }))
+        const testActualArr = historical.map((_, i) =>
+          i >= pred.testOffset ? pred.testActual[i - pred.testOffset] : null
+        )
+        const testPredArr   = historical.map((_, i) =>
+          i >= pred.testOffset ? pred.testPred[i - pred.testOffset] : null
+        )
+        res = { symbol: sym, historical, future, testActualArr, testPredArr, metrics: pred.metrics, currencySymbol }
       }
 
-      const historical = rows.map((r, i) => ({
-        ...r, sma20: pred.sma20[i], sma100: pred.sma100[i],
-      }))
-      const future = futDates.map((date, i) => ({ date, predicted: pred.predictions[i] }))
-
-      const testActualArr = historical.map((_, i) =>
-        i >= pred.testOffset ? pred.testActual[i - pred.testOffset] : null
-      )
-      const testPredArr = historical.map((_, i) =>
-        i >= pred.testOffset ? pred.testPred[i - pred.testOffset] : null
-      )
-
-      setResult({ symbol: sym, historical, future, testActualArr, testPredArr, metrics: pred.metrics, currencySymbol })
+      setResult(res)
       setActiveTab('history')
     } catch (e) {
       setError(e.message)

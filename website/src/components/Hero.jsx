@@ -11,18 +11,9 @@ export default function Hero() {
   return (
     <section className="relative min-h-screen flex flex-col items-center justify-center px-4 text-center overflow-hidden pt-10">
 
-      {/* Aurora background */}
-      <div className="aurora-wrap">
-        <div className="aurora-blob aurora-1" />
-        <div className="aurora-blob aurora-2" />
-        <div className="aurora-blob aurora-3" />
-        <div className="aurora-blob aurora-4" />
-        <div className="aurora-blob aurora-5" />
-      </div>
-
-      {/* Grid overlay */}
+      {/* Grid overlay - The sole background element */}
       <div
-        className="absolute inset-0 opacity-[0.05] pointer-events-none"
+        className="absolute inset-0 opacity-[0.06] pointer-events-none"
         style={{
           backgroundImage: 'linear-gradient(#d4af37 1px, transparent 1px), linear-gradient(90deg, #d4af37 1px, transparent 1px)',
           backgroundSize: '40px 40px',

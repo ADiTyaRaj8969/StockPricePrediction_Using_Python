@@ -1,124 +1,106 @@
-# Stock Price Prediction — Machine Learning
+# 📈 QuantEdge — Advanced Stock Price Prediction
 
-A full-stack ML application that predicts stock prices using **Random Forest** and **LSTM** models, with an interactive React frontend and a PDF report generator.
+[![License: MIT](https://img.shields.io/badge/License-MIT-gold.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
+[![React 18](https://img.shields.io/badge/React-18-61dafb.svg)](https://reactjs.org/)
+[![Deployment: Render](https://img.shields.io/badge/Deployment-Render-46E3B7.svg)](https://render.com/)
+
+QuantEdge is a sophisticated full-stack machine learning application designed to forecast stock market trends. It leverages an ensemble of **Random Forest** and **LSTM** models to provide short-term and long-term price predictions with a focus on visual clarity and user experience.
 
 ---
 
-## Project Structure
+## ✨ Key Features
 
-```
-├── code.py              # Random Forest prediction model
-├── trial.py             # LSTM (TensorFlow/Keras) model
+- **🚀 Live ML Predictor**: Real-time market data fetching from Yahoo Finance with instant browser-side or server-side (Flask) inference.
+- **🧠 Hybrid AI Engine**: 
+  - **Random Forest**: 100-tree ensemble for robust daily forecasts (Backend).
+  - **LSTM**: 3-layer Deep Learning model for sequential pattern recognition (`trial.py`).
+- **🌍 Dynamic Multi-Currency**: Automatic localized currency detection (`₹`, `$`, `£`, `€`, etc.) based on the stock ticker suffix.
+- **📊 6-Point Technical Analysis**:
+  - Close Price History
+  - SMA 20 & SMA 100 (Trend Confirmation)
+  - Actual vs Predicted (Accuracy Validation)
+  - 7-Day Future Forecast
+  - Price Distribution & KDE
+  - Feature Correlation Matrix
+- **📄 Pro PDF Reports**: Generate comprehensive analysis reports with charts, metrics, and insights directly from the dashboard.
+- **🎨 Minimalist Grid UI**: A high-end, dark-themed interface focused on "Grid-only" aesthetics for maximum focus.
+
+---
+
+## 🛠️ Tech Stack
+
+### Backend
+- **Core**: Python 3.11, Flask
+- **ML/DS**: Scikit-Learn, TensorFlow, NumPy, Pandas
+- **Utilities**: yfinance, SciPy, Matplotlib, Seaborn
+
+### Frontend
+- **Core**: React 18, Vite
+- **Styling**: Tailwind CSS, Vanilla CSS
+- **Animations**: Framer Motion
+- **Charts**: Recharts
+- **PDF**: jsPDF
+
+---
+
+## 📂 Project Structure
+
+```text
 ├── backend/
-│   ├── app.py           # Flask REST API
-│   └── requirements.txt
+│   ├── app.py           # Flask REST API (Ensemble Inference)
+│   └── requirements.txt # Python dependencies
 ├── website/
-│   ├── src/             # React frontend
-│   ├── package.json
-│   └── .env.example
-└── .github/
-    └── workflows/
-        └── deploy.yml   # GitHub Actions — auto-deploy to Pages
+│   ├── src/             # React application source
+│   ├── public/          # Static assets
+│   └── .env.example     # Environment template
+├── code.py              # Random Forest core logic
+├── trial.py             # LSTM (TensorFlow) core logic
+├── render.yaml          # Render.com Infrastructure-as-Code
+└── .github/workflows/   # CI/CD for GitHub Pages
 ```
 
 ---
 
-## Models
+## 🚀 Quick Start
 
-| Feature           | Random Forest (`code.py`)      | LSTM (`trial.py`)              |
-|-------------------|---------------------------------|---------------------------------|
-| Library           | scikit-learn                   | TensorFlow / Keras              |
-| Architecture      | 100 decision trees             | 3-layer LSTM + Dropout(0.2)     |
-| Training speed    | Fast (no GPU needed)           | Slow (100 epochs)               |
-| Loss function     | MSE                            | MSE                             |
-| Normalization     | MinMaxScaler (0–1)             | MinMaxScaler (0–1)              |
+### 1. Prerequisites
+- Python 3.10+
+- Node.js 18+
 
----
-
-## Quick Start
-
-### 1. Backend (Python)
-
+### 2. Local Backend Setup
 ```bash
 cd backend
 pip install -r requirements.txt
 python app.py
-# API runs at http://localhost:5000
+# API starts at http://localhost:5000
 ```
 
-### 2. Frontend (React)
-
+### 3. Local Frontend Setup
 ```bash
 cd website
-cp .env.example .env.local          # set VITE_API_URL if needed
+cp .env.example .env.local  # Point VITE_API_URL to http://localhost:5000
 npm install
-npm run dev                          # dev server at http://localhost:5173
-```
-
-### 3. Production build
-
-```bash
-cd website
-npm run build                        # outputs to website/dist/
+npm run dev
 ```
 
 ---
 
-## Backend API Endpoints
+## 🌐 Deployment
 
-| Method | Path           | Description                                      |
-|--------|----------------|--------------------------------------------------|
-| GET    | `/api/health`  | Health check                                     |
-| POST   | `/api/predict` | Returns historical prices + ML forecast + metrics |
-| POST   | `/api/report`  | Returns 6 matplotlib chart images for PDF report  |
+### Backend (Render)
+The project includes a `render.yaml` for seamless deployment:
+1. Connect your GitHub repo to **Render**.
+2. Render will automatically detect the blueprint and set up the Flask service.
+3. Copy your Render service URL.
 
-### POST `/api/predict` — Request body
-
-```json
-{
-  "symbol":          "AAPL",
-  "start":           "2024-01-01",
-  "end":             "2025-01-01",
-  "prediction_days": 30,
-  "future_days":     7
-}
-```
+### Frontend (GitHub Pages)
+1. Set the `VITE_API_URL` secret in your GitHub Repository settings.
+2. Push to `main` — the GitHub Action (`deploy.yml`) will handle the rest.
 
 ---
 
-## Deploying the Frontend to GitHub Pages
+## 📝 License
+Distributed under the MIT License. See `LICENSE` for more information.
 
-The GitHub Actions workflow (`.github/workflows/deploy.yml`) automatically builds and deploys the React app to GitHub Pages whenever you push to `main`.
-
-**Setup steps:**
-1. Go to **Settings → Pages** → set source to `gh-pages` branch.
-2. (Optional) Add `VITE_API_URL` as a **Repository Secret** (Settings → Secrets) pointing to your deployed backend URL.
-3. Push to `main` — the site deploys automatically.
-
-Live URL: `https://ADiTyaRaj8969.github.io/StockPricePrediction_Using_Python/`
-
----
-
-## Deploying the Backend
-
-The Flask API can be deployed to any Python-compatible hosting:
-
-- **Render** (free tier): connect repo, set `Start Command` to `cd backend && python app.py`
-- **Railway**: auto-detects Python, set `ROOT_DIRECTORY` to `backend`
-- **Heroku**: add a `Procfile` with `web: python backend/app.py`
-
-After deployment, set the backend URL as `VITE_API_URL` in the frontend env or as a GitHub Secret.
-
----
-
-## Tech Stack
-
-**Backend:** Python, Flask, scikit-learn, TensorFlow, yfinance, NumPy, Pandas, Matplotlib, Seaborn, SciPy
-
-**Frontend:** React, Vite, Tailwind CSS, Framer Motion, Recharts, jsPDF
-
----
-
-## License
-
-MIT — Aditya Raj
+Developed with ❤️ by [Aditya Raj](https://github.com/ADiTyaRaj8969)

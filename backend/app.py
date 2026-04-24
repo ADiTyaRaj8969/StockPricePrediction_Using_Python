@@ -106,6 +106,18 @@ def predict_future(model, scaler, close, pred_days, n):
     return preds
 
 
+CURR_MAP = {
+    '.NS': '₹', '.BO': '₹', '.L': '£', '.PA': '€', '.DE': '€',
+    '.TO': 'CA$', '.AX': 'A$', '.HK': 'HK$', '.T': '¥',
+}
+
+def get_currency_symbol(symbol):
+    for suffix, sym in CURR_MAP.items():
+        if symbol.upper().endswith(suffix):
+            return sym
+    return '$'
+
+
 def future_dates(last_dt, n):
     out = []
     for i in range(1, n + 1):
@@ -163,6 +175,7 @@ def predict():
 
     return jsonify({
         'symbol': symbol,
+        'currencySymbol': get_currency_symbol(symbol),
         'historical': historical,
         'future': [{'date': d, 'predicted': p} for d, p in zip(fut_dates, fut_prices)],
         'test_actual':    test_actual_arr,
@@ -205,6 +218,7 @@ def report():
 
     fut_prices = predict_future(model, scaler, close, pred_days, fut_days)
     fut_dates_ = future_dates(df.index[-1], fut_days)
+    curr_sym   = get_currency_symbol(symbol)
 
     s20  = np.array([v if v is not None else np.nan for v in sma(close, 20)])
     s100 = np.array([v if v is not None else np.nan for v in sma(close, 100)])
@@ -214,7 +228,7 @@ def report():
     ax.plot(close, color=GOLD, linewidth=1.5, label='Close Price')
     ax.fill_between(range(len(close)), close, alpha=0.08, color=GOLD)
     ax.set_title(f'{symbol} – Close Price History')
-    ax.set_xlabel('Trading Days'); ax.set_ylabel('Price (USD)')
+    ax.set_xlabel('Trading Days'); ax.set_ylabel(f'Price ({curr_sym})')
     ax.legend(); ax.grid(True)
     chart_history = fig_to_b64(fig)
 
@@ -224,7 +238,7 @@ def report():
     ax.plot(s20,   color=BLUE,   linewidth=1.5, linestyle='--', label='SMA 20')
     ax.plot(s100,  color=PURPLE, linewidth=1.5, linestyle='--', label='SMA 100')
     ax.set_title(f'{symbol} – Close Price & Moving Averages')
-    ax.set_xlabel('Trading Days'); ax.set_ylabel('Price (USD)')
+    ax.set_xlabel('Trading Days'); ax.set_ylabel(f'Price ({curr_sym})')
     ax.legend(); ax.grid(True)
     chart_sma = fig_to_b64(fig)
 
@@ -232,8 +246,8 @@ def report():
     fig, ax = plt.subplots(figsize=(12, 4.5))
     ax.plot(y_actual, color=GOLD,  linewidth=1.5, label='Actual Price')
     ax.plot(y_pred,   color=BLUE,  linewidth=1.5, linestyle='--', label='Predicted (RF)')
-    ax.set_title(f'{symbol} – Actual vs Predicted (Test Set)  |  RMSE: ${rmse:.2f}')
-    ax.set_xlabel('Test Days'); ax.set_ylabel('Price (USD)')
+    ax.set_title(f'{symbol} – Actual vs Predicted (Test Set)  |  RMSE: {curr_sym}{rmse:.2f}')
+    ax.set_xlabel('Test Days'); ax.set_ylabel(f'Price ({curr_sym})')
     ax.legend(); ax.grid(True)
     chart_avp = fig_to_b64(fig)
 
@@ -248,7 +262,7 @@ def report():
             marker='o', markersize=4, label=f'Predicted ({fut_days}d)')
     ax.axvline(x=last_n - 1, color='#2a2800', linestyle=':', linewidth=1.5)
     ax.set_title(f'{symbol} – Future Price Prediction')
-    ax.set_xlabel('Trading Days'); ax.set_ylabel('Price (USD)')
+    ax.set_xlabel('Trading Days'); ax.set_ylabel(f'Price ({curr_sym})')
     ax.legend(); ax.grid(True)
     chart_future = fig_to_b64(fig)
 
@@ -266,7 +280,7 @@ def report():
     except Exception:
         pass
     ax.set_title(f'{symbol} – Closing Price Distribution')
-    ax.set_xlabel('Price (USD)'); ax.set_ylabel('Frequency')
+    ax.set_xlabel(f'Price ({curr_sym})'); ax.set_ylabel('Frequency')
     ax.grid(True)
     chart_dist = fig_to_b64(fig)
 
@@ -296,8 +310,8 @@ def report():
                 'image': chart_history,
                 'description': (
                     f'Historical closing price of {symbol} from {start} to {end}. '
-                    f'The price started at ${close[0]:.2f} and '
-                    f'{"rose" if close[-1] > close[0] else "fell"} to ${close[-1]:.2f} — '
+                    f'The price started at {curr_sym}{close[0]:.2f} and '
+                    f'{"rose" if close[-1] > close[0] else "fell"} to {curr_sym}{close[-1]:.2f} — '
                     f'a {(close[-1]-close[0])/close[0]*100:+.2f}% change over the period. '
                     f'The shaded area highlights overall price momentum.'
                 ),
@@ -318,7 +332,7 @@ def report():
                 'image': chart_avp,
                 'description': (
                     f'The Random Forest model was evaluated on a held-out test set (20% of data = {len(y_actual)} days). '
-                    f'Achieved RMSE: ${rmse:.2f} | Estimated accuracy: {accuracy:.1f}%. '
+                    f'Achieved RMSE: {curr_sym}{rmse:.2f} | Estimated accuracy: {accuracy:.1f}%. '
                     f'The model uses {pred_days} previous trading days as input features to predict the next day\'s closing price. '
                     f'100 decision trees are averaged (ensemble) to produce each prediction.'
                 ),
@@ -329,7 +343,7 @@ def report():
                 'description': (
                     f'Iterative {fut_days}-day forecast starting from {str(df.index[-1].date())}. '
                     f'Each predicted value is fed back as input for the next step. '
-                    f'Next trading day prediction: ${fut_prices[0]:.2f} '
+                    f'Next trading day prediction: {curr_sym}{fut_prices[0]:.2f} '
                     f'({(fut_prices[0]-close[-1])/close[-1]*100:+.2f}% from current). '
                     'Stock predictions carry inherent uncertainty — use as one of many decision inputs.'
                 ),
@@ -340,8 +354,8 @@ def report():
                 'description': (
                     f'Histogram of {symbol} closing prices over the selected period. '
                     f'The KDE curve shows the probability density. '
-                    f'Median: ${np.median(close):.2f} | Min: ${close.min():.2f} | '
-                    f'Max: ${close.max():.2f} | Std Dev: ${close.std():.2f}. '
+                    f'Median: {curr_sym}{np.median(close):.2f} | Min: {curr_sym}{close.min():.2f} | '
+                    f'Max: {curr_sym}{close.max():.2f} | Std Dev: {curr_sym}{close.std():.2f}. '
                     f'Concentration around certain price levels indicates support/resistance zones.'
                 ),
             },

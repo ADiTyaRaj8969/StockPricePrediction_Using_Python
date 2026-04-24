@@ -77,7 +77,7 @@ function addHeader(doc, symbol, startDate, endDate) {
 }
 
 // ── Signal badge ─────────────────────────────────────────────────────────────
-function addSignal(doc, metrics, y) {
+function addSignal(doc, metrics, y, currencySymbol = '$') {
   const bull = metrics.predictedNext >= metrics.currentPrice
   const col  = bull ? GREEN : RED
 
@@ -102,16 +102,16 @@ function addSignal(doc, metrics, y) {
 }
 
 // ── Metrics grid (2 rows × 4 cols) ───────────────────────────────────────────
-function addMetrics(doc, metrics, y) {
+function addMetrics(doc, metrics, y, currencySymbol = '$') {
   y = sectionHeader(doc, 'KEY METRICS', y)
 
   const cards = [
-    { label: 'Current Price',   value: `$${(metrics.currentPrice ?? 0).toFixed(2)}` },
-    { label: 'Predicted Next',  value: `$${(metrics.predictedNext ?? 0).toFixed(2)}` },
-    { label: 'RMSE',            value: `$${(metrics.rmse ?? 0).toFixed(2)}` },
+    { label: 'Current Price',   value: `${currencySymbol}${(metrics.currentPrice ?? 0).toFixed(2)}` },
+    { label: 'Predicted Next',  value: `${currencySymbol}${(metrics.predictedNext ?? 0).toFixed(2)}` },
+    { label: 'RMSE',            value: `${currencySymbol}${(metrics.rmse ?? 0).toFixed(2)}` },
     { label: 'Accuracy',        value: `${(metrics.accuracy ?? 0).toFixed(1)}%` },
     { label: 'Period Change',   value: `${metrics.pctChange >= 0 ? '+' : ''}${(metrics.pctChange ?? 0).toFixed(2)}%` },
-    { label: 'Price Change',    value: `$${(metrics.priceChange ?? 0).toFixed(2)}` },
+    { label: 'Price Change',    value: `${currencySymbol}${(metrics.priceChange ?? 0).toFixed(2)}` },
     { label: 'Train Days',      value: `${metrics.trainSize ?? '—'}` },
     { label: 'Test Days',       value: `${metrics.testSize ?? '—'}` },
   ]
@@ -143,11 +143,11 @@ function addMetrics(doc, metrics, y) {
 }
 
 // ── Analysis ─────────────────────────────────────────────────────────────────
-function addAnalysis(doc, symbol, metrics, y) {
+function addAnalysis(doc, symbol, metrics, y, currencySymbol = '$') {
   if (y > 235) { doc.addPage(); fillPage(doc); y = 20 }
   y = sectionHeader(doc, 'ANALYSIS & INSIGHTS', y)
 
-  y = addSignal(doc, metrics, y)
+  y = addSignal(doc, metrics, y, currencySymbol)
 
   const origin = (metrics.currentPrice - (metrics.priceChange ?? 0)).toFixed(2)
   const bull = metrics.predictedNext >= metrics.currentPrice
@@ -155,15 +155,15 @@ function addAnalysis(doc, symbol, metrics, y) {
   const insights = [
     {
       heading: 'Price Trend',
-      body: `${symbol} ${(metrics.pctChange ?? 0) >= 0 ? 'gained' : 'lost'} ${Math.abs(metrics.pctChange ?? 0).toFixed(2)}% over the selected period, moving from $${origin} to $${(metrics.currentPrice ?? 0).toFixed(2)}. ${(metrics.pctChange ?? 0) >= 0 ? 'Sustained upward momentum reflects positive market sentiment.' : 'Downward pressure suggests caution in the near term.'}`,
+      body: `${symbol} ${(metrics.pctChange ?? 0) >= 0 ? 'gained' : 'lost'} ${Math.abs(metrics.pctChange ?? 0).toFixed(2)}% over the selected period, moving from ${currencySymbol}${origin} to ${currencySymbol}${(metrics.currentPrice ?? 0).toFixed(2)}. ${(metrics.pctChange ?? 0) >= 0 ? 'Sustained upward momentum reflects positive market sentiment.' : 'Downward pressure suggests caution in the near term.'}`,
     },
     {
       heading: 'ML Forecast',
-      body: `The ensemble model predicts the next trading day at $${(metrics.predictedNext ?? 0).toFixed(2)} — a ${bull ? 'bullish' : 'bearish'} signal. The prediction is derived from a weighted k-NN ensemble trained on ${metrics.trainSize} days of sliding-window features including returns, volatility, and momentum.`,
+      body: `The ensemble model predicts the next trading day at ${currencySymbol}${(metrics.predictedNext ?? 0).toFixed(2)} — a ${bull ? 'bullish' : 'bearish'} signal. The prediction is derived from a weighted k-NN ensemble trained on ${metrics.trainSize} days of sliding-window features including returns, volatility, and momentum.`,
     },
     {
       heading: 'Model Performance',
-      body: `Root Mean Squared Error (RMSE): $${(metrics.rmse ?? 0).toFixed(2)} on ${metrics.testSize} held-out test days. Estimated accuracy: ${(metrics.accuracy ?? 0).toFixed(1)}%. RMSE below 2% of the current price indicates strong predictive fit. The model uses an 80/20 train-test split.`,
+      body: `Root Mean Squared Error (RMSE): ${currencySymbol}${(metrics.rmse ?? 0).toFixed(2)} on ${metrics.testSize} held-out test days. Estimated accuracy: ${(metrics.accuracy ?? 0).toFixed(1)}%. RMSE below 2% of the current price indicates strong predictive fit. The model uses an 80/20 train-test split.`,
     },
     {
       heading: 'Moving Averages',
@@ -201,7 +201,7 @@ function addAnalysis(doc, symbol, metrics, y) {
 }
 
 // ── Forecast table ───────────────────────────────────────────────────────────
-function addForecastTable(doc, future, currentPrice, y) {
+function addForecastTable(doc, future, currentPrice, y, currencySymbol = '$') {
   if (y > 220) { doc.addPage(); fillPage(doc); y = 20 }
   y = sectionHeader(doc, 'FORECAST TABLE', y)
 
@@ -231,7 +231,7 @@ function addForecastTable(doc, future, currentPrice, y) {
 
     gold(doc)
     doc.setFont('helvetica', 'bold')
-    doc.text(`$${(f.predicted ?? 0).toFixed(2)}`, 120, y + 5.5)
+    doc.text(`${currencySymbol}${(f.predicted ?? 0).toFixed(2)}`, 120, y + 5.5)
 
     const chg = currentPrice ? ((f.predicted - currentPrice) / currentPrice * 100) : 0
     const up  = chg >= 0
@@ -245,7 +245,7 @@ function addForecastTable(doc, future, currentPrice, y) {
 }
 
 // ── Historical data table (last 30 rows) ─────────────────────────────────────
-function addHistoricalTable(doc, historical, y) {
+function addHistoricalTable(doc, historical, y, currencySymbol = '$') {
   if (y > 220) { doc.addPage(); fillPage(doc); y = 20 }
   y = sectionHeader(doc, `RECENT PRICE HISTORY (last ${Math.min(30, historical.length)} trading days)`, y)
 
@@ -273,13 +273,13 @@ function addHistoricalTable(doc, historical, y) {
     doc.setFontSize(7.5)
     doc.setFont('helvetica', 'normal')
     doc.text(r.date ?? '—',                       28, y + 5)
-    doc.text(r.open  != null ? `$${r.open.toFixed(2)}`  : '—', 68,  y + 5)
-    doc.text(r.high  != null ? `$${r.high.toFixed(2)}`  : '—', 98,  y + 5)
-    doc.text(r.low   != null ? `$${r.low.toFixed(2)}`   : '—', 123, y + 5)
+    doc.text(r.open  != null ? `${currencySymbol}${r.open.toFixed(2)}`  : '—', 68,  y + 5)
+    doc.text(r.high  != null ? `${currencySymbol}${r.high.toFixed(2)}`  : '—', 98,  y + 5)
+    doc.text(r.low   != null ? `${currencySymbol}${r.low.toFixed(2)}`   : '—', 123, y + 5)
 
     gold(doc)
     doc.setFont('helvetica', 'bold')
-    doc.text(r.close != null ? `$${r.close.toFixed(2)}` : '—', 148, y + 5)
+    doc.text(r.close != null ? `${currencySymbol}${r.close.toFixed(2)}` : '—', 148, y + 5)
 
     muted(doc)
     doc.setFont('helvetica', 'normal')
@@ -311,19 +311,20 @@ function addFooters(doc, symbol) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 export async function generateReport(result) {
-  const { symbol, historical, future, metrics } = result
+  const { symbol, historical, future, metrics, currencySymbol } = result
   const startDate = historical[0]?.date  ?? '—'
   const endDate   = historical[historical.length - 1]?.date ?? '—'
+  const sym       = currencySymbol ?? '$'
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
 
   addHeader(doc, symbol, startDate, endDate)
 
   let y = 52
-  y = addMetrics(doc, metrics, y)
-  y = addAnalysis(doc, symbol, metrics, y)
-  y = addForecastTable(doc, future, metrics.currentPrice, y)
-  addHistoricalTable(doc, historical, y)
+  y = addMetrics(doc, metrics, y, sym)
+  y = addAnalysis(doc, symbol, metrics, y, sym)
+  y = addForecastTable(doc, future, metrics.currentPrice, y, sym)
+  addHistoricalTable(doc, historical, y, sym)
   addFooters(doc, symbol)
 
   doc.save(`${symbol}_StockAnalysis_${new Date().toISOString().split('T')[0]}.pdf`)

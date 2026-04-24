@@ -42,86 +42,6 @@
   }
 }
 
-/* ── Aurora background blobs ─────────────────────────────────────────────── */
-.aurora-wrap {
-  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
-  /* Full-height ambient base — covers entire hero so no dark void */
-  background:
-    radial-gradient(ellipse 140% 60% at 50% 10%,  rgba(100,70,0,0.22) 0%, transparent 65%),
-    radial-gradient(ellipse 120% 60% at 50% 90%,  rgba(80,55,0,0.20)  0%, transparent 65%),
-    radial-gradient(ellipse 100% 100% at 50% 50%, rgba(60,40,0,0.12)  0%, transparent 80%);
-}
-
-.aurora-blob {
-  position: absolute;
-  border-radius: 50%;
-  will-change: transform;
-}
-
-/* Blob 1 — large gold sweep, top-left */
-.aurora-1 {
-  width: 100%; height: 100%;
-  top: -35%; left: -30%;
-  background: radial-gradient(circle, rgba(212,175,55,0.26) 0%, rgba(180,120,0,0.10) 45%, transparent 70%);
-  filter: blur(100px);
-  animation: auroraFloat1 16s ease-in-out infinite;
-}
-
-/* Blob 2 — amber, right-center */
-.aurora-2 {
-  width: 85%; height: 85%;
-  top: 10%; right: -30%;
-  background: radial-gradient(circle, rgba(200,120,0,0.22) 0%, rgba(212,175,55,0.08) 50%, transparent 70%);
-  filter: blur(90px);
-  animation: auroraFloat2 20s ease-in-out infinite;
-}
-
-/* Blob 3 — bottom-center, large enough to fully light the lower half */
-.aurora-3 {
-  width: 110%; height: 100%;
-  bottom: -20%; left: -5%;
-  background: radial-gradient(circle, rgba(212,175,55,0.18) 0%, rgba(180,120,0,0.10) 40%, transparent 68%);
-  filter: blur(110px);
-  animation: auroraFloat3 13s ease-in-out infinite;
-}
-
-/* Blob 4 — center fill so midpoint is never empty */
-.aurora-4 {
-  width: 80%; height: 80%;
-  top: 25%; left: 10%;
-  background: radial-gradient(circle, rgba(212,175,55,0.14) 0%, rgba(160,100,0,0.06) 55%, transparent 70%);
-  filter: blur(80px);
-  animation: auroraFloat4 22s ease-in-out infinite;
-}
-
-/* Blob 5 — bottom-right corner fill */
-.aurora-5 {
-  width: 70%; height: 70%;
-  bottom: -15%; right: -15%;
-  background: radial-gradient(circle, rgba(180,120,0,0.16) 0%, rgba(212,175,55,0.06) 50%, transparent 70%);
-  filter: blur(100px);
-  animation: auroraFloat2 18s ease-in-out infinite reverse;
-}
-
-@keyframes auroraFloat1 {
-  0%, 100% { transform: translate(0%,   0%)   scale(1);    }
-  33%       { transform: translate(5%,  -10%)  scale(1.06); }
-  66%       { transform: translate(-3%,  5%)   scale(0.97); }
-}
-@keyframes auroraFloat2 {
-  0%, 100% { transform: translate(0%,   0%)   scale(1);    }
-  33%       { transform: translate(-8%,  7%)   scale(1.08); }
-  66%       { transform: translate(5%,  -8%)   scale(0.94); }
-}
-@keyframes auroraFloat3 {
-  0%, 100% { transform: translate(0%,  0%)    scale(1);    }
-  50%       { transform: translate(6%, -6%)    scale(1.10); }
-}
-@keyframes auroraFloat4 {
-  0%, 100% { transform: translate(0%,  0%)    scale(1);    }
-  40%       { transform: translate(-5%, 8%)    scale(1.05); }
-  80%       { transform: translate(4%, -5%)    scale(0.96); }
-}
 
 /* ── Ticker tape ─────────────────────────────────────────────────────────── */
 .ticker-track { display: flex; white-space: nowrap; animation: tickerScroll 30s linear infinite; }
@@ -190,3 +110,4 @@
 .recharts-cartesian-axis-tick-value { fill: #7a7760 !important; font-size: 11px; }
 .recharts-legend-item-text { color: #c8c4a0 !important; font-size: 12px; }
 .recharts-tooltip-wrapper { outline: none; }
+

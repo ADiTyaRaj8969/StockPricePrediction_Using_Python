@@ -1,0 +1,24 @@
+services:
+  # ── Flask backend ──────────────────────────────────────────────────────────
+  - type: web
+    name: stockpredict-api
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    autoDeploy: true
+
+  # ── React frontend (static site) ───────────────────────────────────────────
+  - type: web
+    name: stockpredict-ui
+    env: static
+    rootDir: website
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false   # Set this in Render dashboard → backend service URL
+    autoDeploy: true
