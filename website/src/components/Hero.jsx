@@ -50,13 +50,6 @@ export default function Hero() {
             Launch Predictor
             <ArrowRight size={14} />
           </a>
-          <a
-            href="https://github.com/ADiTyaRaj8969/StockPricePrediction_Using_Python"
-            target="_blank" rel="noreferrer"
-            className="flex items-center gap-2 px-6 sm:px-7 py-3 sm:py-3.5 rounded-xl border border-[#d4af37]/30 text-[#d4af37] font-semibold text-sm hover:bg-[#d4af37]/10 hover:border-[#d4af37] transition-all"
-          >
-            View Source Code
-          </a>
         </motion.div>
 
       </div>

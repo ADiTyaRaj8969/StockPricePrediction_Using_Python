@@ -53,7 +53,6 @@ async function backendPredict(sym, startDate, endDate, predDays, futureDays) {
     testPredArr:    json.test_predicted,
     metrics: {
       rmse:          m.rmse,
-      accuracy:      m.accuracy,
       currentPrice:  m.current_price,
       predictedNext: m.predicted_next,
       pctChange:     m.pct_change,
@@ -410,7 +409,7 @@ export default function StockPredictor() {
             <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
 
               {/* Metrics */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
                 <MetricCard
                   title="Current Price"
                   value={fmtP(m.currentPrice, currency)}
@@ -429,12 +428,6 @@ export default function StockPredictor() {
                   sub={`Tested on ${m.testSize} trading days`}
                   icon={BarChart2}
                 />
-                <MetricCard
-                  title="Accuracy"
-                  value={`${m.accuracy}%`}
-                  sub={`${m.trainSize} days training`}
-                  icon={TrendingUp} up={m.accuracy >= 80}
-                />
               </div>
 
               {/* Signal badges */}
@@ -446,7 +439,7 @@ export default function StockPredictor() {
                   {result.symbol} · {m.dataPoints} data points
                 </span>
                 <span className="px-3 py-1 rounded-full border border-[#2a2800] text-[#7a7760] bg-[#181700] text-xs font-semibold">
-                  Ensemble: k-NN + LinReg + Holt Smoothing
+                  Ensemble: RF + GBM + Extra Trees + Ridge
                 </span>
               </div>
 

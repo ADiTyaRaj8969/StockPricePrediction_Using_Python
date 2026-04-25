@@ -2,7 +2,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
-import io, base64, math, os
+import io, base64, math, os, warnings
+warnings.filterwarnings('ignore')
 
 import numpy as np
 import pandas as pd
@@ -13,8 +14,12 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dist')
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import MinMaxScaler
+
+from sklearn.ensemble import (
+    RandomForestRegressor, GradientBoostingRegressor, ExtraTreesRegressor
+)
+from sklearn.linear_model import Ridge
+from sklearn.preprocessing import RobustScaler
 from sklearn.metrics import mean_squared_error
 
 app = Flask(__name__)
@@ -61,7 +66,7 @@ def fig_to_b64(fig):
     return f'data:image/png;base64,{encoded}'
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Data fetch ────────────────────────────────────────────────────────────────
 
 def get_data(symbol, start, end):
     try:
@@ -69,6 +74,7 @@ def get_data(symbol, start, end):
         if df.empty:
             return None, None, None
         df.columns = [c[0] if isinstance(c, tuple) else c for c in df.columns]
+        df = df.dropna(subset=['Close'])
         close = df['Close'].values.flatten().astype(float)
         dates = [str(d.date()) for d in df.index]
         return df, close, dates
@@ -83,28 +89,254 @@ def sma(prices, w):
     return out
 
 
-def train_model(close, pred_days):
-    scaler = MinMaxScaler()
-    scaled = scaler.fit_transform(close.reshape(-1, 1))
+# ── Technical indicator engine ────────────────────────────────────────────────
+
+def _ema(arr, span):
+    s = pd.Series(arr)
+    return s.ewm(span=span, adjust=False).mean().values
+
+def _rsi(close, period=14):
+    delta = np.diff(close, prepend=close[0])
+    gain  = np.where(delta > 0, delta, 0.0)
+    loss  = np.where(delta < 0, -delta, 0.0)
+    ag    = pd.Series(gain).ewm(alpha=1/period, adjust=False).mean().values
+    al    = pd.Series(loss).ewm(alpha=1/period, adjust=False).mean().values
+    rs    = np.where(al < 1e-10, 100.0, ag / (al + 1e-10))
+    return np.where(al < 1e-10, 100.0, 100 - 100 / (1 + rs))
+
+def _atr(high, low, close, period=14):
+    tr = np.maximum(high - low,
+         np.maximum(np.abs(high - np.roll(close, 1)),
+                    np.abs(low  - np.roll(close, 1))))
+    tr[0] = high[0] - low[0]
+    return pd.Series(tr).rolling(period, min_periods=1).mean().values
+
+def _stoch(high, low, close, k=14, d=3):
+    lo = pd.Series(low).rolling(k,  min_periods=1).min().values
+    hi = pd.Series(high).rolling(k, min_periods=1).max().values
+    k_pct = 100 * (close - lo) / (hi - lo + 1e-10)
+    d_pct = pd.Series(k_pct).rolling(d, min_periods=1).mean().values
+    return k_pct, d_pct
+
+def _williams_r(high, low, close, period=14):
+    hi = pd.Series(high).rolling(period, min_periods=1).max().values
+    lo = pd.Series(low).rolling(period,  min_periods=1).min().values
+    return -100 * (hi - close) / (hi - lo + 1e-10)
+
+def _obv(close, volume):
+    direction = np.sign(np.diff(close, prepend=close[0]))
+    return np.cumsum(direction * volume)
+
+def _cmf(high, low, close, volume, period=20):
+    mfm = ((close - low) - (high - close)) / (high - low + 1e-10)
+    mfv = mfm * volume
+    return pd.Series(mfv).rolling(period, min_periods=1).sum().values / \
+           (pd.Series(volume).rolling(period, min_periods=1).sum().values + 1e-10)
+
+def build_features(df, close):
+    """
+    ~35 features per bar — all computed in log-return / ratio space
+    so the model sees stationary, scale-invariant inputs.
+    """
+    n = len(close)
+    high   = df['High'].values.flatten().astype(float)  if 'High'   in df.columns else close
+    low    = df['Low'].values.flatten().astype(float)   if 'Low'    in df.columns else close
+    volume = df['Volume'].values.flatten().astype(float) if 'Volume' in df.columns else np.ones(n)
+    volume = np.where(volume == 0, 1, volume)
+
+    log_ret = np.log(close / np.roll(close, 1)); log_ret[0] = 0
+
+    # EMAs
+    e5,  e10, e20  = _ema(close, 5),  _ema(close, 10), _ema(close, 20)
+    e50, e100      = _ema(close, 50), _ema(close, 100)
+
+    # Price / EMA ratios
+    r5   = close / (e5   + 1e-10) - 1
+    r10  = close / (e10  + 1e-10) - 1
+    r20  = close / (e20  + 1e-10) - 1
+    r50  = close / (e50  + 1e-10) - 1
+    r100 = close / (e100 + 1e-10) - 1
+
+    # EMA cross
+    cross_s  = e5  / (e20  + 1e-10) - 1   # short-term trend
+    cross_m  = e20 / (e100 + 1e-10) - 1   # medium trend
+
+    # MACD
+    macd     = _ema(close, 12) - _ema(close, 26)
+    macd_sig = _ema(macd, 9)
+    macd_h   = macd - macd_sig
+
+    # Bollinger Bands (20, 2)
+    bb_mid = pd.Series(close).rolling(20, min_periods=1).mean().values
+    bb_std = pd.Series(close).rolling(20, min_periods=1).std().fillna(0).values
+    bb_pos = (close - (bb_mid - 2*bb_std)) / (4*bb_std + 1e-10)   # 0=lower, 1=upper
+    bb_wid = 4 * bb_std / (bb_mid + 1e-10)
+
+    # RSI (7 and 14)
+    rsi7  = _rsi(close, 7)  / 100
+    rsi14 = _rsi(close, 14) / 100
+
+    # ATR (normalised by close)
+    atr14 = _atr(high, low, close, 14) / (close + 1e-10)
+
+    # Stochastic
+    stoch_k, stoch_d = _stoch(high, low, close)
+    stoch_k /= 100; stoch_d /= 100
+
+    # Williams %R
+    will_r = (_williams_r(high, low, close) + 100) / 100   # normalised 0–1
+
+    # OBV (normalised)
+    obv = _obv(close, volume)
+    obv_norm = obv / (np.abs(obv).max() + 1e-10)
+
+    # Chaikin Money Flow
+    cmf20 = _cmf(high, low, close, volume)
+
+    # Momentum returns (5, 10, 20, 60 day)
+    def safe_ret(k):
+        r = np.roll(close, k); r[:k] = close[:k]
+        return close / (r + 1e-10) - 1
+    mom5, mom10, mom20, mom60 = safe_ret(5), safe_ret(10), safe_ret(20), safe_ret(60)
+
+    # Rolling volatility (10, 20)
+    vol10 = pd.Series(log_ret).rolling(10, min_periods=1).std().fillna(0).values
+    vol20 = pd.Series(log_ret).rolling(20, min_periods=1).std().fillna(0).values
+
+    # Volume momentum
+    vol_ma20 = pd.Series(volume).rolling(20, min_periods=1).mean().values
+    vol_ratio = volume / (vol_ma20 + 1e-10) - 1
+
+    # High-Low range
+    hl_range = (high - low) / (close + 1e-10)
+
+    # Lag returns
+    lag1 = np.roll(log_ret, 1); lag1[0] = 0
+    lag2 = np.roll(log_ret, 2); lag2[:2] = 0
+    lag3 = np.roll(log_ret, 3); lag3[:3] = 0
+
+    X = np.column_stack([
+        log_ret, lag1, lag2, lag3,
+        r5, r10, r20, r50, r100,
+        cross_s, cross_m,
+        macd / (close + 1e-10), macd_sig / (close + 1e-10), macd_h / (close + 1e-10),
+        bb_pos, bb_wid,
+        rsi7, rsi14,
+        atr14,
+        stoch_k, stoch_d,
+        will_r,
+        obv_norm, cmf20,
+        mom5, mom10, mom20, mom60,
+        vol10, vol20,
+        vol_ratio, hl_range,
+    ])
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    return X
+
+
+# ── Ensemble model ────────────────────────────────────────────────────────────
+
+def build_supervised(features, target_returns, horizon=1):
+    """Predict log-return `horizon` steps ahead from feature vector at t."""
     X, y = [], []
-    for i in range(pred_days, len(scaled)):
-        X.append(scaled[i - pred_days:i, 0])
-        y.append(scaled[i, 0])
-    X, y = np.array(X), np.array(y)
-    split = int(len(X) * 0.8)
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
-    model.fit(X[:split], y[:split])
-    return model, scaler, X[split:], y[split:], split
+    for i in range(len(features) - horizon):
+        X.append(features[i])
+        y.append(target_returns[i + horizon])
+    return np.array(X), np.array(y)
 
 
-def predict_future(model, scaler, close, pred_days, n):
-    scaled = scaler.transform(close.reshape(-1, 1)).flatten()
-    seq = list(scaled[-pred_days:])
-    preds = []
-    for _ in range(n):
-        p = model.predict(np.array(seq[-pred_days:]).reshape(1, -1))[0]
-        preds.append(float(scaler.inverse_transform([[p]])[0][0]))
-        seq.append(p)
+def train_ensemble(X_tr, y_tr):
+    rf  = RandomForestRegressor(
+              n_estimators=400, max_depth=12, min_samples_leaf=4,
+              max_features='sqrt', n_jobs=-1, random_state=42)
+    gbr = GradientBoostingRegressor(
+              n_estimators=300, max_depth=5, learning_rate=0.04,
+              subsample=0.8, min_samples_leaf=5, random_state=42)
+    et  = ExtraTreesRegressor(
+              n_estimators=400, max_depth=12, min_samples_leaf=4,
+              max_features='sqrt', n_jobs=-1, random_state=42)
+    ridge = Ridge(alpha=1.0)
+
+    rf.fit(X_tr, y_tr)
+    gbr.fit(X_tr, y_tr)
+    et.fit(X_tr, y_tr)
+    # Stack: use predictions of base models as features for Ridge meta-learner
+    p_rf  = rf.predict(X_tr)
+    p_gbr = gbr.predict(X_tr)
+    p_et  = et.predict(X_tr)
+    meta_X = np.column_stack([p_rf, p_gbr, p_et])
+    ridge.fit(meta_X, y_tr)
+    return rf, gbr, et, ridge
+
+
+def predict_ensemble(models, X):
+    rf, gbr, et, ridge = models
+    p_rf  = rf.predict(X)
+    p_gbr = gbr.predict(X)
+    p_et  = et.predict(X)
+    meta_X = np.column_stack([p_rf, p_gbr, p_et])
+    return ridge.predict(meta_X)
+
+
+def run_model(df, close, pred_days):
+    """
+    Train ensemble on log-returns with rich features.
+    Returns: models, features, log_returns, split index, X_test, y_test_prices, y_pred_prices
+    """
+    features   = build_features(df, close)
+    log_ret    = np.log(close / np.roll(close, 1)); log_ret[0] = 0
+
+    X, y = build_supervised(features, log_ret, horizon=1)
+    if len(X) < 60:
+        raise ValueError('Not enough data — expand the date range.')
+
+    split  = int(len(X) * 0.80)
+    X_tr, X_te = X[:split], X[split:]
+    y_tr, y_te = y[:split], y[split:]
+
+    scaler = RobustScaler()
+    X_tr_s = scaler.fit_transform(X_tr)
+    X_te_s = scaler.transform(X_te)
+
+    models = train_ensemble(X_tr_s, y_tr)
+
+    # Reconstruct prices from predicted log-returns on test set
+    pred_rets  = predict_ensemble(models, X_te_s)
+    base_prices = close[split:split + len(X_te)]   # price at each test-step start
+    y_pred_px   = base_prices * np.exp(pred_rets)
+    y_actual_px = close[split + 1:split + 1 + len(X_te)]
+    # align lengths
+    min_len = min(len(y_pred_px), len(y_actual_px))
+    y_pred_px   = y_pred_px[:min_len]
+    y_actual_px = y_actual_px[:min_len]
+
+    return models, scaler, features, log_ret, split, X_te_s, y_actual_px, y_pred_px
+
+
+def forecast_future(models, scaler, df, close, n_days):
+    """Iterative multi-step forecast in log-return space."""
+    # Build live feature state — append predicted rows step by step
+    sim_df    = df.copy()
+    sim_close = list(close)
+    preds     = []
+
+    for _ in range(n_days):
+        feats = build_features(sim_df, np.array(sim_close))
+        x     = scaler.transform(feats[[-1]])
+        ret   = predict_ensemble(models, x)[0]
+        # Clamp per-step return to ±15 % to prevent runaway
+        ret   = np.clip(ret, -0.15, 0.15)
+        next_p = sim_close[-1] * math.exp(ret)
+        preds.append(round(float(next_p), 4))
+
+        # Extend dataframe with synthetic row for next iteration
+        new_row = sim_df.iloc[-1].copy()
+        for col in ['Close', 'Open', 'High', 'Low']:
+            if col in new_row:
+                new_row[col] = next_p
+        sim_close.append(next_p)
+        sim_df = pd.concat([sim_df, new_row.to_frame().T], ignore_index=True)
+
     return preds
 
 
@@ -172,18 +404,19 @@ def predict():
     df, close, dates = get_data(symbol, start, end)
     if df is None:
         return jsonify({'error': f'No data found for "{symbol}"'}), 404
-    if len(close) < pred_days + 20:
-        return jsonify({'error': f'Need at least {pred_days + 20} trading days of data.'}), 400
+    if len(close) < 80:
+        return jsonify({'error': 'Need at least 80 trading days. Expand the date range.'}), 400
 
-    model, scaler, X_test, y_test, split = train_model(close, pred_days)
+    try:
+        models, scaler, features, log_ret, split, X_te_s, y_actual, y_pred = \
+            run_model(df, close, pred_days)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
-    y_pred   = scaler.inverse_transform(model.predict(X_test).reshape(-1, 1)).flatten()
-    y_actual = scaler.inverse_transform(y_test.reshape(-1, 1)).flatten()
-    rmse     = math.sqrt(mean_squared_error(y_actual, y_pred))
-    accuracy = max(0.0, min(100.0, 100 - rmse / (np.mean(y_actual) + 1e-9) * 100))
+    rmse = math.sqrt(mean_squared_error(y_actual, y_pred))
 
-    fut_prices = predict_future(model, scaler, close, pred_days, fut_days)
-    fut_dates  = future_dates(df.index[-1], fut_days)
+    fut_prices = forecast_future(models, scaler, df, close, fut_days)
+    fut_dates_ = future_dates(df.index[-1], fut_days)
 
     s20  = sma(close, 20)
     s100 = sma(close, 100)
@@ -194,27 +427,28 @@ def predict():
         for i in range(len(dates))
     ]
 
-    test_off = split + pred_days
-    test_actual_arr  = [None] * test_off + [float(v) for v in y_actual]
-    test_pred_arr    = [None] * test_off + [float(v) for v in y_pred]
+    # Align test arrays with historical (offset = split+1 because we predict ret[i+1])
+    test_off = split + 1
+    n_pad    = len(close) - test_off - len(y_actual)
+    test_actual_arr  = [None] * test_off + [float(v) for v in y_actual] + [None] * max(0, n_pad)
+    test_pred_arr    = [None] * test_off + [float(v) for v in y_pred]   + [None] * max(0, n_pad)
 
     return jsonify({
-        'symbol': symbol,
+        'symbol':         symbol,
         'currencySymbol': get_currency_symbol(symbol),
-        'historical': historical,
-        'future': [{'date': d, 'predicted': p} for d, p in zip(fut_dates, fut_prices)],
+        'historical':     historical,
+        'future':         [{'date': d, 'predicted': p} for d, p in zip(fut_dates_, fut_prices)],
         'test_actual':    test_actual_arr,
         'test_predicted': test_pred_arr,
         'metrics': {
-            'rmse':           float(rmse),
-            'accuracy':       float(accuracy),
+            'rmse':           round(float(rmse), 4),
             'current_price':  float(close[-1]),
             'predicted_next': fut_prices[0] if fut_prices else None,
             'price_change':   float(close[-1] - close[0]),
-            'pct_change':     float((close[-1] - close[0]) / close[0] * 100),
+            'pct_change':     round(float((close[-1] - close[0]) / close[0] * 100), 2),
             'data_points':    len(close),
             'train_size':     split,
-            'test_size':      len(X_test),
+            'test_size':      len(y_actual),
         },
     })
 
@@ -231,17 +465,17 @@ def report():
     df, close, dates = get_data(symbol, start, end)
     if df is None:
         return jsonify({'error': f'No data found for "{symbol}"'}), 404
-    if len(close) < pred_days + 20:
-        return jsonify({'error': 'Not enough data for report.'}), 400
+    if len(close) < 80:
+        return jsonify({'error': 'Need at least 80 trading days for report.'}), 400
 
-    model, scaler, X_test, y_test, split = train_model(close, pred_days)
+    try:
+        models, scaler, features, log_ret, split, X_te_s, y_actual, y_pred = \
+            run_model(df, close, pred_days)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
-    y_pred   = scaler.inverse_transform(model.predict(X_test).reshape(-1, 1)).flatten()
-    y_actual = scaler.inverse_transform(y_test.reshape(-1, 1)).flatten()
-    rmse     = math.sqrt(mean_squared_error(y_actual, y_pred))
-    accuracy = max(0.0, min(100.0, 100 - rmse / (np.mean(y_actual) + 1e-9) * 100))
-
-    fut_prices = predict_future(model, scaler, close, pred_days, fut_days)
+    rmse       = math.sqrt(mean_squared_error(y_actual, y_pred))
+    fut_prices = forecast_future(models, scaler, df, close, fut_days)
     fut_dates_ = future_dates(df.index[-1], fut_days)
     curr_sym   = get_currency_symbol(symbol)
 
@@ -324,7 +558,7 @@ def report():
     return jsonify({
         'symbol': symbol,
         'metrics': {
-            'rmse': float(rmse), 'accuracy': float(accuracy),
+            'rmse': round(float(rmse), 4),
             'current_price': float(close[-1]),
             'predicted_next': fut_prices[0] if fut_prices else None,
             'data_points': len(close), 'start': start, 'end': end,
@@ -356,10 +590,10 @@ def report():
                 'id': 'avp', 'title': 'Actual vs Predicted Prices (Test Set)',
                 'image': chart_avp,
                 'description': (
-                    f'The Random Forest model was evaluated on a held-out test set (20% of data = {len(y_actual)} days). '
-                    f'Achieved RMSE: {curr_sym}{rmse:.2f} | Estimated accuracy: {accuracy:.1f}%. '
-                    f'The model uses {pred_days} previous trading days as input features to predict the next day\'s closing price. '
-                    f'100 decision trees are averaged (ensemble) to produce each prediction.'
+                    f'Ensemble model (Random Forest + Gradient Boosting + Extra Trees + Ridge meta-learner) '
+                    f'evaluated on {len(y_actual)} held-out test days. '
+                    f'RMSE: {curr_sym}{rmse:.2f}. Features include RSI, MACD, Bollinger Bands, ATR, Stochastics, '
+                    f'OBV, Chaikin Money Flow, momentum across 5/10/20/60-day windows, and EMA crossovers.'
                 ),
             },
             {

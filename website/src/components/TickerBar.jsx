@@ -20,6 +20,12 @@ const DEFAULT = [
 
 const SYMBOLS = DEFAULT.map(t => t.sym)
 
+const CURR_MAP = { '.NS': '₹', '.BO': '₹', '.L': '£', '.PA': '€', '.DE': '€', '.TO': 'CA$', '.AX': 'A$' }
+const symCurr  = sym => {
+  for (const [sfx, c] of Object.entries(CURR_MAP)) if (sym.endsWith(sfx)) return c
+  return '$'
+}
+
 export default function TickerBar() {
   const [tickers, setTickers] = useState(DEFAULT)
 
@@ -57,8 +63,8 @@ export default function TickerBar() {
         <div className="ticker-track">
           {items.map((t, i) => (
             <span key={i} className="inline-flex items-center gap-2 px-5 text-xs font-mono whitespace-nowrap">
-              <span className="text-[#d4af37] font-semibold">{t.sym}</span>
-              <span className="text-[#c8c4a0]">${t.price}</span>
+              <span className="text-[#d4af37] font-semibold">{t.sym.replace('.NS','').replace('.BO','')}</span>
+              <span className="text-[#c8c4a0]">{symCurr(t.sym)}{t.price}</span>
               <span className={t.up ? 'text-[#4ade80]' : 'text-[#f87171]'}>
                 {t.up ? '▲' : '▼'} {t.chg}%
               </span>
