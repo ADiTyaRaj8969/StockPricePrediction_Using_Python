@@ -31,6 +31,7 @@ jobs:
         run: npm run build
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_BASE_PATH: /StockPricePrediction_Using_Python/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
