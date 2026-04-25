@@ -105,9 +105,10 @@ def _rsi(close, period=14):
     return np.where(al < 1e-10, 100.0, 100 - 100 / (1 + rs))
 
 def _atr(high, low, close, period=14):
+    prev = np.roll(close, 1)
     tr = np.maximum(high - low,
-         np.maximum(np.abs(high - np.roll(close, 1)),
-                    np.abs(low  - np.roll(close, 1))))
+         np.maximum(np.abs(high - prev),
+                    np.abs(low  - prev))).copy()
     tr[0] = high[0] - low[0]
     return pd.Series(tr).rolling(period, min_periods=1).mean().values
 
@@ -138,13 +139,14 @@ def build_features(df, close):
     ~35 features per bar — all computed in log-return / ratio space
     so the model sees stationary, scale-invariant inputs.
     """
+    close  = np.array(close, dtype=float)   # always writable
     n = len(close)
-    high   = df['High'].values.flatten().astype(float)  if 'High'   in df.columns else close
-    low    = df['Low'].values.flatten().astype(float)   if 'Low'    in df.columns else close
-    volume = df['Volume'].values.flatten().astype(float) if 'Volume' in df.columns else np.ones(n)
-    volume = np.where(volume == 0, 1, volume)
+    high   = np.array(df['High'].values.flatten(),   dtype=float) if 'High'   in df.columns else close.copy()
+    low    = np.array(df['Low'].values.flatten(),    dtype=float) if 'Low'    in df.columns else close.copy()
+    volume = np.array(df['Volume'].values.flatten(), dtype=float) if 'Volume' in df.columns else np.ones(n)
+    volume = np.where(volume == 0, 1.0, volume)
 
-    log_ret = np.log(close / np.roll(close, 1)); log_ret[0] = 0
+    log_ret = np.log(close / np.roll(close, 1)).copy(); log_ret[0] = 0
 
     # EMAs
     e5,  e10, e20  = _ema(close, 5),  _ema(close, 10), _ema(close, 20)
@@ -195,7 +197,7 @@ def build_features(df, close):
 
     # Momentum returns (5, 10, 20, 60 day)
     def safe_ret(k):
-        r = np.roll(close, k); r[:k] = close[:k]
+        r = np.roll(close, k).copy(); r[:k] = close[:k]
         return close / (r + 1e-10) - 1
     mom5, mom10, mom20, mom60 = safe_ret(5), safe_ret(10), safe_ret(20), safe_ret(60)
 
@@ -283,8 +285,9 @@ def run_model(df, close, pred_days):
     Train ensemble on log-returns with rich features.
     Returns: models, features, log_returns, split index, X_test, y_test_prices, y_pred_prices
     """
+    close      = np.array(close, dtype=float)   # ensure writable copy
     features   = build_features(df, close)
-    log_ret    = np.log(close / np.roll(close, 1)); log_ret[0] = 0
+    log_ret    = np.log(close / np.roll(close, 1)).copy(); log_ret[0] = 0
 
     X, y = build_supervised(features, log_ret, horizon=1)
     if len(X) < 60:
@@ -321,21 +324,21 @@ def forecast_future(models, scaler, df, close, n_days):
     preds     = []
 
     for _ in range(n_days):
-        feats = build_features(sim_df, np.array(sim_close))
+        close_arr = np.array(sim_close, dtype=float)
+        feats = build_features(sim_df, close_arr)
         x     = scaler.transform(feats[[-1]])
-        ret   = predict_ensemble(models, x)[0]
-        # Clamp per-step return to ±15 % to prevent runaway
-        ret   = np.clip(ret, -0.15, 0.15)
+        ret   = float(predict_ensemble(models, x)[0])
+        ret   = max(-0.15, min(0.15, ret))   # clamp ±15%
         next_p = sim_close[-1] * math.exp(ret)
-        preds.append(round(float(next_p), 4))
+        preds.append(round(next_p, 4))
 
-        # Extend dataframe with synthetic row for next iteration
-        new_row = sim_df.iloc[-1].copy()
-        for col in ['Close', 'Open', 'High', 'Low']:
+        # Append a synthetic row so build_features sees updated OHLCV
+        new_row = {c: sim_df.iloc[-1][c] for c in sim_df.columns}
+        for col in ('Close', 'Open', 'High', 'Low'):
             if col in new_row:
                 new_row[col] = next_p
+        sim_df = pd.concat([sim_df, pd.DataFrame([new_row])], ignore_index=True)
         sim_close.append(next_p)
-        sim_df = pd.concat([sim_df, new_row.to_frame().T], ignore_index=True)
 
     return preds
 
