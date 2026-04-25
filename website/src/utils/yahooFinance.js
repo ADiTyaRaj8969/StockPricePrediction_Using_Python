@@ -55,6 +55,27 @@ export async function fetchHistory(symbol, startDate, endDate) {
   return { rows, currencySymbol }
 }
 
+// ── Company search (live autocomplete) ───────────────────────────────────────
+export async function searchCompanies(query) {
+  if (!query || query.length < 2) return []
+  const url = `${YF}/v1/finance/search?q=${encodeURIComponent(query)}&newsCount=0&enableFuzzyQuery=true&enableNavLinks=false&quotesCount=10`
+  try {
+    const json    = await yFetch(url)
+    const quotes  = json?.quotes ?? []
+    return quotes
+      .filter(q => q.symbol && q.quoteType !== 'OPTION' && q.quoteType !== 'FUTURE')
+      .map(q => ({
+        ticker: q.symbol,
+        name:   q.longname || q.shortname || q.symbol,
+        type:   q.quoteType ?? '',
+        exchange: q.exchDisp ?? '',
+      }))
+      .slice(0, 8)
+  } catch (_) {
+    return []
+  }
+}
+
 // ── Real-time quotes (ticker bar) ─────────────────────────────────────────────
 export async function fetchQuotes(symbols) {
   const url = `${YF}/v7/finance/quote?symbols=${symbols.join(',')}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent`

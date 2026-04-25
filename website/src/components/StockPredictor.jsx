@@ -10,10 +10,10 @@ import {
   TrendingUp, DollarSign, Target, BarChart2,
   Download, Loader2, AlertCircle, Search, X,
 } from 'lucide-react'
-import { fetchHistory }           from '../utils/yahooFinance'
-import { runPrediction, calcRSI } from '../utils/mlPredict'
-import { generateReport }         from '../utils/reportFrontend'
-import { COMPANIES }              from '../data/companies'
+import { fetchHistory, searchCompanies } from '../utils/yahooFinance'
+import { runPrediction, calcRSI }        from '../utils/mlPredict'
+import { generateReport }                from '../utils/reportFrontend'
+import { COMPANIES }                     from '../data/companies'
 
 const TODAY    = new Date().toISOString().split('T')[0]
 const ONE_YR   = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0]
@@ -125,14 +125,17 @@ export default function StockPredictor() {
   const [predDays,     setPredDays]     = useState(30)
   const [futureDays,   setFutureDays]   = useState(7)
 
-  const [loading,   setLoading]   = useState(false)
-  const [error,     setError]     = useState(null)
-  const [result,    setResult]    = useState(null)
-  const [activeTab, setActiveTab] = useState('history')
-  const [reporting, setReporting] = useState(false)
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState(null)
+  const [result,      setResult]      = useState(null)
+  const [activeTab,   setActiveTab]   = useState('history')
+  const [reporting,   setReporting]   = useState(false)
+  const [liveResults, setLiveResults] = useState([])
+  const [liveLoading, setLiveLoading] = useState(false)
 
-  const chartRef   = useRef(null)
-  const dropRef    = useRef(null)
+  const chartRef     = useRef(null)
+  const dropRef      = useRef(null)
+  const searchTimer  = useRef(null)
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -143,19 +146,41 @@ export default function StockPredictor() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // Filtered company list
-  const filtered = useMemo(() => {
+  // Local filter from bundled 500+ company list
+  const localFiltered = useMemo(() => {
     const q = companyQuery.trim().toLowerCase()
     if (!q) return COMPANIES.slice(0, 20)
     return COMPANIES.filter(c =>
       c.name.toLowerCase().includes(q) || c.ticker.toLowerCase().includes(q)
-    ).slice(0, 25)
+    ).slice(0, 8)
   }, [companyQuery])
+
+  // Debounced live search via Yahoo Finance when local results are sparse
+  useEffect(() => {
+    clearTimeout(searchTimer.current)
+    const q = companyQuery.trim()
+    if (q.length < 2 || localFiltered.length >= 5) {
+      setLiveResults([])
+      return
+    }
+    setLiveLoading(true)
+    searchTimer.current = setTimeout(async () => {
+      const res = await searchCompanies(q)
+      // Exclude tickers already in local results
+      const localTickers = new Set(localFiltered.map(c => c.ticker))
+      setLiveResults(res.filter(r => !localTickers.has(r.ticker)))
+      setLiveLoading(false)
+    }, 350)
+    return () => clearTimeout(searchTimer.current)
+  }, [companyQuery, localFiltered])
+
+  const allDropResults = [...localFiltered, ...liveResults]
 
   const selectCompany = useCallback((c) => {
     setSymbol(c.ticker)
     setCompanyQuery(c.name)
     setShowDrop(false)
+    setLiveResults([])
   }, [])
 
   const selectQuick = useCallback((q) => {
@@ -324,20 +349,26 @@ export default function StockPredictor() {
 
               {/* Dropdown */}
               <AnimatePresence>
-                {showDrop && filtered.length > 0 && (
+                {showDrop && (allDropResults.length > 0 || liveLoading) && (
                   <motion.div
                     initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
                     transition={{ duration: 0.15 }}
                     className="absolute z-50 w-full mt-1 bg-[#181700] border border-[#2a2800] rounded-xl shadow-2xl max-h-64 overflow-y-auto"
                   >
-                    {filtered.map((c, i) => (
+                    {allDropResults.map((c, i) => (
                       <button key={i} onMouseDown={() => selectCompany(c)}
                         className="w-full text-left px-4 py-2.5 hover:bg-[#2a2800] transition-colors border-b border-[#2a2800]/40 last:border-0 flex items-center gap-3"
                       >
                         <span className="text-[#d4af37] font-mono text-[10px] font-bold w-24 shrink-0">{c.ticker}</span>
                         <span className="text-[#c8c4a0] text-xs truncate">{c.name}</span>
+                        {!COMPANIES.find(lc => lc.ticker === c.ticker) && (
+                          <span className="text-[10px] text-[#7a7760] ml-auto shrink-0">live</span>
+                        )}
                       </button>
                     ))}
+                    {liveLoading && (
+                      <div className="px-4 py-2 text-[10px] text-[#7a7760]">Searching Yahoo Finance...</div>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
