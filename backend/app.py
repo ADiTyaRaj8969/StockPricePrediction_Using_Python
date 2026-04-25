@@ -213,9 +213,9 @@ def build_features(df, close):
     hl_range = (high - low) / (close + 1e-10)
 
     # Lag returns
-    lag1 = np.roll(log_ret, 1); lag1[0] = 0
-    lag2 = np.roll(log_ret, 2); lag2[:2] = 0
-    lag3 = np.roll(log_ret, 3); lag3[:3] = 0
+    lag1 = np.roll(log_ret, 1).copy(); lag1[0] = 0
+    lag2 = np.roll(log_ret, 2).copy(); lag2[:2] = 0
+    lag3 = np.roll(log_ret, 3).copy(); lag3[:3] = 0
 
     X = np.column_stack([
         log_ret, lag1, lag2, lag3,
