@@ -17,14 +17,20 @@ import { COMPANIES }              from '../data/companies'
 
 const TODAY    = new Date().toISOString().split('T')[0]
 const ONE_YR   = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0]
-const API_URL  = import.meta.env.VITE_API_URL  // set to Flask backend URL on Render
+
+// VITE_API_URL = explicit external URL  →  use that backend
+// VITE_API_URL = '' (empty string)      →  same-origin /api  (single Render service)
+// VITE_API_URL not defined              →  browser-side ML fallback
+const _rawEnv     = import.meta.env.VITE_API_URL
+const USE_BACKEND = _rawEnv !== undefined
+const API_BASE    = _rawEnv ?? ''
 
 const fmt     = s => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''
 const fmtP    = (v, c = '$') => v != null ? `${c}${Number(v).toFixed(2)}` : '—'
 const getCurr = sym => (sym.endsWith('.NS') || sym.endsWith('.BO')) ? '₹' : '$'
 
 async function backendPredict(sym, startDate, endDate, predDays, futureDays) {
-  const resp = await fetch(`${API_URL}/api/predict`, {
+  const resp = await fetch(`${API_BASE}/api/predict`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -167,7 +173,7 @@ export default function StockPredictor() {
     setLoading(true); setError(null); setResult(null)
     try {
       let res
-      if (API_URL) {
+      if (USE_BACKEND) {
         // ── Flask backend (Random Forest via Python) ──
         res = await backendPredict(sym, startDate, endDate, predDays, futureDays)
       } else {

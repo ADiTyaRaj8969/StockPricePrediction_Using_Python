@@ -2,15 +2,17 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
-import io, base64, math
+import io, base64, math, os
 
 import numpy as np
 import pandas as pd
 import yfinance as yf
 import datetime as dt
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+
+DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dist')
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
@@ -130,15 +132,25 @@ def future_dates(last_dt, n):
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@app.route('/')
-def index():
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_react(path):
+    # Let /api/* routes fall through to their own handlers (registered after)
+    # but Flask matches routes in order of specificity, so /api/* routes win.
+    # This catch-all only fires for non-API paths.
+    if os.path.isdir(DIST_DIR):
+        file_path = os.path.join(DIST_DIR, path)
+        if path and os.path.isfile(file_path):
+            return send_from_directory(DIST_DIR, path)
+        return send_from_directory(DIST_DIR, 'index.html')
+    # Fallback when frontend hasn't been built yet
     return jsonify({
         'status': 'online',
         'message': 'QuantEdge Stock Prediction API is running.',
         'endpoints': {
             'health': '/api/health',
             'predict': '/api/predict (POST)',
-            'report': '/api/report (POST)'
+            'report': '/api/report (POST)',
         }
     })
 
