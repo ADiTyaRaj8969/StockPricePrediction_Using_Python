@@ -2,7 +2,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
-import io, base64, math, os, warnings
+import io, base64, math, os, warnings, traceback
 warnings.filterwarnings('ignore')
 
 import numpy as np
@@ -183,7 +183,8 @@ def build_features(df, close):
 
     # Stochastic
     stoch_k, stoch_d = _stoch(high, low, close)
-    stoch_k /= 100; stoch_d /= 100
+    stoch_k = stoch_k.copy() / 100
+    stoch_d = stoch_d.copy() / 100
 
     # Williams %R
     will_r = (_williams_r(high, low, close) + 100) / 100   # normalised 0–1
@@ -413,12 +414,14 @@ def predict():
     try:
         models, scaler, features, log_ret, split, X_te_s, y_actual, y_pred = \
             run_model(df, close, pred_days)
+        fut_prices = forecast_future(models, scaler, df, close, fut_days)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
     rmse = math.sqrt(mean_squared_error(y_actual, y_pred))
 
-    fut_prices = forecast_future(models, scaler, df, close, fut_days)
     fut_dates_ = future_dates(df.index[-1], fut_days)
 
     s20  = sma(close, 20)
@@ -474,11 +477,13 @@ def report():
     try:
         models, scaler, features, log_ret, split, X_te_s, y_actual, y_pred = \
             run_model(df, close, pred_days)
+        fut_prices = forecast_future(models, scaler, df, close, fut_days)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
     rmse       = math.sqrt(mean_squared_error(y_actual, y_pred))
-    fut_prices = forecast_future(models, scaler, df, close, fut_days)
     fut_dates_ = future_dates(df.index[-1], fut_days)
     curr_sym   = get_currency_symbol(symbol)
 
